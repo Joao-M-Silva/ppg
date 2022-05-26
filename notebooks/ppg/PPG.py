@@ -1,28 +1,36 @@
 import numpy as np
 import pandas as pd
 from .functions import power_spectrum
-from typing import Optional
+from typing import Optional, Tuple, List
 import scipy.stats
 import seaborn as sns
+import plotly.graph_objects as go
+from enum import Enum, auto
 
 class FPSError(Exception):
     pass
+
+class TimeUnit(Enum):
+    SECONDS = auto()
+    MILISECONDS = auto()
 
 class PPG:
     def __init__(self, 
                  df_ppg:pd.DataFrame, 
                  source_name:str,):
-        self.ppg = self._process_ppg(df_ppg)
+        self.ppg = PPG._process_ppg(df_ppg)
         self.source_name = source_name
         self.power_spectum = power_spectrum(
             signal=df_ppg[self.source_name].values, 
             plot=False
             )
+        self.predictions = None
     
     def __str__(self):
         return f"PPG derived from {self.source_name}."
 
-    def _process_ppg(self, ppg:pd.DataFrame) -> pd.DataFrame:
+    @staticmethod
+    def _process_ppg(ppg:pd.DataFrame) -> pd.DataFrame:
         #Only consider data after 10 seconds of recording
         ppg = ppg.query('10.0 < Time_s < 174.0').reset_index(drop=True)
         delta_ms = int(ppg.loc[1, 'Time_ms'] - ppg.loc[0, 'Time_ms'])
@@ -41,12 +49,45 @@ class PPG:
             raise FPSError("Frequency different than 30 Hz.")
         return reference
 
-    def display_power_spectum(self):
+    def display_power_spectum(self, source:Optional[str]=None):
+        if source:
+            source_name = source
+        else:
+            source_name = self.source_name
         power_spectrum(
-            signal=self.ppg[self.source_name], 
+            signal=self.ppg[source_name], 
             plot=True, 
-            df_power=self.power_spectum
             )
+
+    def display_signals(
+            self,
+            columns=List[str],
+            time_range:Optional[Tuple[float, float]]=None,
+            time_unit:Optional[TimeUnit]=TimeUnit.SECONDS,
+            width:Optional[float]=0.5,
+        ):
+        fig = go.Figure()
+        if time_unit == TimeUnit.SECONDS:
+            time_col = 'Time_s'
+        elif time_unit == TimeUnit.MILISECONDS:
+            time_col = 'Time_ms'
+
+        if time_range is not None:
+            min_time = time_range[0]
+            max_time = time_range[1]
+            df = self.ppg.query(f"@min_time <= `{time_col}` <= @max_time")
+        else:
+            df = self.ppg
+        for col in columns:
+            fig.add_trace(
+                    go.Scatter(
+                    x=df[time_col],
+                    y=df[col],
+                    name=col,
+                    line=dict(width=width)
+                )
+            )
+        return fig
 
     @staticmethod
     def _folds_indices(array:np.array, n_folds:int) -> np.array:
@@ -95,10 +136,11 @@ class PPG:
             hr_references.append(hr_oxymeter_bpm)
         df_HR['Reference[bpm]'] = hr_references
         df_HR['Reference[Hz]'] = df_HR['Reference[bpm]'] * (1/60)
+        self.predictions = df_HR
         return df_HR
     
     @staticmethod
-    def MAE(results:pd.DataFrame) -> float:
+    def MAE(results) -> float:
         predictions = results['HR[bpm]'].values
         references = results['Reference[bpm]'].values
         difference_array = abs(np.subtract(predictions, references))

@@ -53,7 +53,6 @@ def _select_source(ica_sources:List[np.array]) -> Tuple[np.array, int]:
     maximum_peaks = list(map(map_function, ica_sources))
     max_peak = max(maximum_peaks)
     max_peak_index = maximum_peaks.index(max_peak)
-    print('Max Peak Source: ', max_peak_index)
     return ica_sources[max_peak_index], max_peak_index
 
 def ppg_by_ica_sources(df:pd.DataFrame,) -> pd.DataFrame:
@@ -65,8 +64,6 @@ def ppg_by_ica_sources(df:pd.DataFrame,) -> pd.DataFrame:
     ica = FastICA(n_components=3)
     #Source Signals
     S = ica.fit_transform(X)
-    print('Mixing Matrix')
-    print(ica.mixing_)
     df['ICA_Source_0'] = S[:,0]
     df['ICA_Source_1'] = S[:,1]
     df['ICA_Source_2'] = S[:,2]
